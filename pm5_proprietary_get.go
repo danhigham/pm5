@@ -24,16 +24,51 @@ func (p *PM5) GetFirmwareVersion() (*FirmwareVersion, error) {
 		return nil, err
 	}
 
-	if len(resp.CommandData) < 2 {
-		return nil, ErrInvalidResponse
+	// if len(resp.CommandData) < 2 {
+	// 	return nil, ErrInvalidResponse
+	// }
+
+	for _, cr := range resp.CommandData {
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetFWVersion && len(pmResp.Data) >= 1 {
+				fw := &FirmwareVersion{}
+				copy(fw.Version[:], pmResp.Data[:16])
+				return fw, nil
+				// return csafe.ErgMachineType(pmResp.Data[0]), nil
+			}
+		}
 	}
 
-	// The response is in the second command response (after the wrapper)
+	return nil, ErrInvalidResponse
+}
+
+type HardwareVersion struct {
+	Version [16]byte
+}
+
+// GetFirmwareVersion returns the PM5 firmware version
+func (p *PM5) GetHardWareVersion() (*HardwareVersion, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pmCmd := csafe.BuildCommand(csafe.PMCmdGetHWVersion)
+	resp, err := p.sendPMCommand(csafe.CmdGetPMCfg, pmCmd)
+	if err != nil {
+		return nil, err
+	}
+
+	// if len(resp.CommandData) < 2 {
+	// 	return nil, ErrInvalidResponse
+	// }
+
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetFWVersion && len(cr.Data) >= 16 {
-			fw := &FirmwareVersion{}
-			copy(fw.Version[:], cr.Data[:16])
-			return fw, nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetHWVersion && len(pmResp.Data) >= 1 {
+				hw := &HardwareVersion{}
+				copy(hw.Version[:], pmResp.Data[:16])
+				return hw, nil
+				// return csafe.ErgMachineType(pmResp.Data[0]), nil
+			}
 		}
 	}
 
@@ -52,9 +87,11 @@ func (p *PM5) GetHardwareAddress() (uint32, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetHWAddress && len(cr.Data) >= 4 {
-			return uint32(cr.Data[0])<<24 | uint32(cr.Data[1])<<16 |
-				uint32(cr.Data[2])<<8 | uint32(cr.Data[3]), nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetHWAddress && len(pmResp.Data) >= 1 {
+				return uint32(pmResp.Data[0])<<24 | uint32(pmResp.Data[1])<<16 |
+					uint32(pmResp.Data[2])<<8 | uint32(pmResp.Data[3]), nil
+			}
 		}
 	}
 
@@ -93,8 +130,10 @@ func (p *PM5) GetWorkoutState() (csafe.WorkoutState, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetWorkoutState && len(cr.Data) >= 1 {
-			return csafe.WorkoutState(cr.Data[0]), nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetWorkoutState && len(pmResp.Data) >= 1 {
+				return csafe.WorkoutState(pmResp.Data[0]), nil
+			}
 		}
 	}
 
@@ -133,8 +172,10 @@ func (p *PM5) GetOperationalState() (csafe.OperationalState, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetOperationalState && len(cr.Data) >= 1 {
-			return csafe.OperationalState(cr.Data[0]), nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetOperationalState && len(pmResp.Data) >= 1 {
+				return csafe.OperationalState(pmResp.Data[0]), nil
+			}
 		}
 	}
 
@@ -153,8 +194,10 @@ func (p *PM5) GetRowingState() (csafe.RowingState, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetRowingState && len(cr.Data) >= 1 {
-			return csafe.RowingState(cr.Data[0]), nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetRowingState && len(pmResp.Data) >= 1 {
+				return csafe.RowingState(pmResp.Data[0]), nil
+			}
 		}
 	}
 
@@ -193,8 +236,10 @@ func (p *PM5) GetBatteryLevel() (byte, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetBatteryLevelPercent && len(cr.Data) >= 1 {
-			return cr.Data[0], nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetBatteryLevelPercent && len(pmResp.Data) >= 1 {
+				return pmResp.Data[0], nil
+			}
 		}
 	}
 
@@ -213,8 +258,10 @@ func (p *PM5) GetErgMachineType() (csafe.ErgMachineType, error) {
 	}
 
 	for _, cr := range resp.CommandData {
-		if cr.Command == csafe.PMCmdGetErgMachineType && len(cr.Data) >= 1 {
-			return csafe.ErgMachineType(cr.Data[0]), nil
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetErgMachineType && len(pmResp.Data) >= 1 {
+				return csafe.ErgMachineType(pmResp.Data[0]), nil
+			}
 		}
 	}
 

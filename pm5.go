@@ -100,6 +100,8 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 		return nil, fmt.Errorf("failed to encode frame: %w", err)
 	}
 
+	fmt.Printf(">> % X\n", encoded)
+
 	// Write to device
 	_, err = p.device.Write(encoded)
 	if err != nil {
@@ -113,6 +115,8 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from device: %w", err)
 	}
+
+	fmt.Printf("<< % X\n", data)
 
 	// Find frame boundaries in response
 	startIdx := -1
@@ -213,10 +217,8 @@ type Version struct {
 	ManufacturerID byte
 	ClassID        byte
 	Model          byte
-	HWVersionHigh  byte
-	HWVersionLow   byte
-	SWVersionHigh  byte
-	SWVersionLow   byte
+	HWVersion      uint16
+	SWVersion      uint16
 }
 
 // GetVersion returns the PM version information
@@ -238,10 +240,8 @@ func (p *PM5) GetVersion() (*Version, error) {
 		ManufacturerID: data[0],
 		ClassID:        data[1],
 		Model:          data[2],
-		HWVersionHigh:  data[3],
-		HWVersionLow:   data[4],
-		SWVersionHigh:  data[5],
-		SWVersionLow:   data[6],
+		HWVersion:      uint16(data[3]) | uint16(data[4])<<8,
+		SWVersion:      uint16(data[5]) | uint16(data[6])<<8,
 	}, nil
 }
 

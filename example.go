@@ -78,8 +78,29 @@ func runExamples(pm *pm5.PM5) {
 		fmt.Printf("Manufacturer ID: %d\n", version.ManufacturerID)
 		fmt.Printf("Class ID: %d\n", version.ClassID)
 		fmt.Printf("Model: PM%d\n", version.Model)
-		fmt.Printf("HW Version: %d.%d\n", version.HWVersionHigh, version.HWVersionLow)
-		fmt.Printf("SW Version: %d.%d\n", version.SWVersionHigh, version.SWVersionLow)
+		fmt.Printf("HW Version: %d\n", version.HWVersion)
+		fmt.Printf("SW Version: %d\n", version.SWVersion)
+	}
+
+	firmwareVersion, err := pm.GetFirmwareVersion()
+	if err != nil {
+		log.Printf("Failed to get firmware: %v", err)
+	} else {
+		fmt.Printf("Firmware version: %s\n", firmwareVersion)
+	}
+
+	hardwareVersion, err := pm.GetHardWareVersion()
+	if err != nil {
+		log.Printf("Failed to get hardware version: %v", err)
+	} else {
+		fmt.Printf("Hardware version: %s\n", hardwareVersion.Version)
+	}
+
+	hardwareAddress, err := pm.GetHardwareAddress()
+	if err != nil {
+		log.Printf("Failed to get hardware address: %v", err)
+	} else {
+		fmt.Printf("Hardware address: %d\n", hardwareAddress)
 	}
 
 	// Get serial number
@@ -106,7 +127,7 @@ func runExamples(pm *pm5.PM5) {
 		fmt.Printf("Battery Level: %d%%\n", battery)
 	}
 
-	fmt.Println("\n--- State Information ---")
+	// fmt.Println("\n--- State Information ---")
 
 	// Get operational state
 	opState, err := pm.GetOperationalState()
@@ -132,35 +153,35 @@ func runExamples(pm *pm5.PM5) {
 		fmt.Printf("Rowing State: %s\n", rowingState)
 	}
 
-	fmt.Println("\n--- Current Data ---")
+	// fmt.Println("\n--- Current Data ---")
 
-	// Get current metrics
-	power, _ := pm.GetPower()
-	fmt.Printf("Power: %d W\n", power)
+	// // Get current metrics
+	// power, _ := pm.GetPower()
+	// fmt.Printf("Power: %d W\n", power)
 
-	pace, _ := pm.GetPace()
-	fmt.Printf("Pace: %s /500m\n", pm5.FormatPace(uint32(pace)))
+	// pace, _ := pm.GetPace()
+	// fmt.Printf("Pace: %s /500m\n", pm5.FormatPace(uint32(pace)))
 
-	strokeRate, _ := pm.GetStrokeRate()
-	fmt.Printf("Stroke Rate: %d spm\n", strokeRate)
+	// strokeRate, _ := pm.GetStrokeRate()
+	// fmt.Printf("Stroke Rate: %d spm\n", strokeRate)
 
-	hr, _ := pm.GetHeartRate()
-	if hr == 255 {
-		fmt.Println("Heart Rate: No HR belt connected")
-	} else {
-		fmt.Printf("Heart Rate: %d bpm\n", hr)
-	}
+	// hr, _ := pm.GetHeartRate()
+	// if hr == 255 {
+	// 	fmt.Println("Heart Rate: No HR belt connected")
+	// } else {
+	// 	fmt.Printf("Heart Rate: %d bpm\n", hr)
+	// }
 
-	dragFactor, _ := pm.GetDragFactor()
-	fmt.Printf("Drag Factor: %d\n", dragFactor)
+	// dragFactor, _ := pm.GetDragFactor()
+	// fmt.Printf("Drag Factor: %d\n", dragFactor)
 
-	fmt.Println("\n--- Workout Snapshot ---")
-	snapshot, err := pm.GetWorkoutSnapshot()
-	if err != nil {
-		log.Printf("Failed to get snapshot: %v", err)
-	} else {
-		fmt.Println(snapshot)
-	}
+	// fmt.Println("\n--- Workout Snapshot ---")
+	// snapshot, err := pm.GetWorkoutSnapshot()
+	// if err != nil {
+	// 	log.Printf("Failed to get snapshot: %v", err)
+	// } else {
+	// 	fmt.Println(snapshot)
+	// }
 }
 
 func demonstrateAPI() {

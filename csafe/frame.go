@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	ErrFrameTooShort     = errors.New("frame too short")
-	ErrInvalidStartFlag  = errors.New("invalid start flag")
-	ErrInvalidStopFlag   = errors.New("invalid stop flag")
-	ErrInvalidChecksum   = errors.New("invalid checksum")
-	ErrFrameTooLong      = errors.New("frame exceeds maximum length")
-	ErrInvalidStuffByte  = errors.New("invalid byte stuffing value")
+	ErrFrameTooShort    = errors.New("frame too short")
+	ErrInvalidStartFlag = errors.New("invalid start flag")
+	ErrInvalidStopFlag  = errors.New("invalid stop flag")
+	ErrInvalidChecksum  = errors.New("invalid checksum")
+	ErrFrameTooLong     = errors.New("frame exceeds maximum length")
+	ErrInvalidStuffByte = errors.New("invalid byte stuffing value")
 )
 
 // Frame represents a CSAFE frame
@@ -34,9 +34,18 @@ type Response struct {
 
 // CommandResponse represents an individual command response within a frame
 type CommandResponse struct {
-	Command   byte
-	ByteCount byte
-	Data      []byte
+	Command     byte
+	ByteCount   byte
+	Data        []byte
+	PMResponses []CommandResponse // Populated when Command is a PM wrapper (0x76, 0x77, 0x7E, 0x7F)
+}
+
+// FirstPMResponse returns the first PM response, or nil if none
+func (c *CommandResponse) FirstPMResponse() *CommandResponse {
+	if len(c.PMResponses) > 0 {
+		return &c.PMResponses[0]
+	}
+	return nil
 }
 
 // EncodeFrame encodes a CSAFE frame with byte stuffing
@@ -163,15 +172,10 @@ func ParseResponse(contents []byte) (*Response, error) {
 	// Parse command responses
 	offset := 1
 	for offset < len(contents) {
-		if offset >= len(contents) {
-			break
-		}
-
 		cmd := contents[offset]
 		offset++
 
 		if offset >= len(contents) {
-			// Short command response with no data
 			resp.CommandData = append(resp.CommandData, CommandResponse{
 				Command:   cmd,
 				ByteCount: 0,
@@ -183,10 +187,9 @@ func ParseResponse(contents []byte) (*Response, error) {
 		byteCount := contents[offset]
 		offset++
 
-		data := make([]byte, 0)
+		var data []byte
 		if byteCount > 0 {
 			if offset+int(byteCount) > len(contents) {
-				// Truncated data, take what's available
 				data = contents[offset:]
 				offset = len(contents)
 			} else {
@@ -195,14 +198,69 @@ func ParseResponse(contents []byte) (*Response, error) {
 			}
 		}
 
-		resp.CommandData = append(resp.CommandData, CommandResponse{
+		cmdResp := CommandResponse{
 			Command:   cmd,
 			ByteCount: byteCount,
 			Data:      data,
-		})
+		}
+
+		// If this is a PM wrapper command, parse the nested PM responses
+		if isPMWrapper(cmd) && len(data) > 0 {
+			cmdResp.PMResponses = parsePMWrapperData(data)
+		}
+
+		resp.CommandData = append(resp.CommandData, cmdResp)
 	}
 
 	return resp, nil
+}
+
+// isPMWrapper returns true if the command is a PM proprietary wrapper
+func isPMWrapper(cmd byte) bool {
+	return cmd == 0x76 || cmd == 0x77 || cmd == 0x7E || cmd == 0x7F
+}
+
+// parsePMWrapperData parses PM proprietary command responses from wrapper data.
+// PM responses follow the same [Cmd][ByteCount][Data] format as standard CSAFE.
+func parsePMWrapperData(data []byte) []CommandResponse {
+	var responses []CommandResponse
+	offset := 0
+
+	for offset < len(data) {
+		cmd := data[offset]
+		offset++
+
+		if offset >= len(data) {
+			responses = append(responses, CommandResponse{
+				Command:   cmd,
+				ByteCount: 0,
+				Data:      nil,
+			})
+			break
+		}
+
+		byteCount := data[offset]
+		offset++
+
+		var cmdData []byte
+		if byteCount > 0 {
+			if offset+int(byteCount) > len(data) {
+				cmdData = data[offset:]
+				offset = len(data)
+			} else {
+				cmdData = data[offset : offset+int(byteCount)]
+				offset += int(byteCount)
+			}
+		}
+
+		responses = append(responses, CommandResponse{
+			Command:   cmd,
+			ByteCount: byteCount,
+			Data:      cmdData,
+		})
+	}
+
+	return responses
 }
 
 // BuildCommand builds a single CSAFE command
