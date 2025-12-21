@@ -15,7 +15,7 @@ A comprehensive Go library for communicating with Concept2 PM5 (and PM3/PM4) row
 ## Installation
 
 ```bash
-go get github.com/concept2/pm5
+go get github.com/danhigham/pm5
 ```
 
 ### USB HID Driver Dependency
@@ -38,8 +38,8 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/concept2/pm5"
-    "github.com/concept2/pm5/device"
+    "github.com/danhigham/pm5"
+    "github.com/danhigham/pm5/device"
 )
 
 func main() {

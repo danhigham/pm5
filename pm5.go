@@ -100,7 +100,7 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 		return nil, fmt.Errorf("failed to encode frame: %w", err)
 	}
 
-	fmt.Printf(">> % X\n", encoded)
+	// fmt.Printf(">> % X\n", encoded)
 
 	// Write to device
 	_, err = p.device.Write(encoded)
@@ -116,7 +116,7 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 		return nil, fmt.Errorf("failed to read from device: %w", err)
 	}
 
-	fmt.Printf("<< % X\n", data)
+	// fmt.Printf("<< % X\n", data)
 
 	// Find frame boundaries in response
 	startIdx := -1
