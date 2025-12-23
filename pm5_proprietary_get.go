@@ -643,3 +643,51 @@ func (p *PM5) GetErrorValue() (uint16, error) {
 
 	return 0, ErrInvalidResponse
 }
+
+// ============================================================================
+// Heart Rate Monitor Detection
+// ============================================================================
+
+// HRMStatus represents the heart rate monitor connection status
+type HRMStatus struct {
+	Connected bool
+	BeltID    byte
+}
+
+// IsHeartRateMonitorConnected checks if a heart rate monitor is connected
+// Returns true if an HRM is connected, false otherwise
+func (p *PM5) IsHeartRateMonitorConnected() (bool, error) {
+	status, err := p.GetHRMStatus()
+	if err != nil {
+		return false, err
+	}
+	return status.Connected, nil
+}
+
+// GetHRMStatus returns detailed heart rate monitor status
+func (p *PM5) GetHRMStatus() (*HRMStatus, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pmCmd := csafe.BuildCommand(csafe.PMCmdGetHRM)
+	resp, err := p.sendPMCommand(csafe.CmdGetPMCfg, pmCmd)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cr := range resp.CommandData {
+		if pmResp := cr.FirstPMResponse(); pmResp != nil {
+			if pmResp.Command == csafe.PMCmdGetHRM && len(pmResp.Data) >= 1 {
+				// The HRM status byte contains the belt ID if connected
+				// A value of 0xFF (255) indicates no HRM connected
+				beltID := pmResp.Data[0]
+				return &HRMStatus{
+					Connected: beltID != 0xFF,
+					BeltID:    beltID,
+				}, nil
+			}
+		}
+	}
+
+	return nil, ErrInvalidResponse
+}

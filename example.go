@@ -38,6 +38,7 @@ func main() {
 
 	usbDev := device.NewUSBDevice(devices[0])
 	pm := pm5.New(usbDev)
+	pm.SetDebug(true)
 
 	if err := pm.Connect(); err != nil {
 		log.Fatalf("Failed to connect: %v", err)
@@ -151,6 +152,18 @@ func runExamples(pm *pm5.PM5) {
 		log.Printf("Failed to get rowing state: %v", err)
 	} else {
 		fmt.Printf("Rowing State: %s\n", rowingState)
+	}
+
+	err = pm.StartFixedDistanceWorkout(5000, 500)
+	if err != nil {
+		log.Printf("Failed to set workout type")
+	}
+
+	time.Sleep(time.Second * 5)
+
+	err = pm.TerminateWorkout()
+	if err != nil {
+		log.Printf("Error terminating workout")
 	}
 
 	// fmt.Println("\n--- Current Data ---")

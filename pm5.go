@@ -5,6 +5,8 @@ package pm5
 import (
 	"errors"
 	"fmt"
+	"log"
+	"runtime"
 	"sync"
 	"time"
 
@@ -26,6 +28,7 @@ type PM5 struct {
 	frameToggle   bool
 	interframeDur time.Duration
 	lastCommand   time.Time
+	debug         bool
 }
 
 // New creates a new PM5 instance with the given HID device
@@ -77,6 +80,13 @@ func (p *PM5) IsConnected() bool {
 	return p.connected
 }
 
+// SetDebug enables or disables hex debug output to stdout
+func (p *PM5) SetDebug(enabled bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.debug = enabled
+}
+
 // sendCommand sends a CSAFE command and returns the response
 func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 	if !p.connected {
@@ -100,12 +110,33 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 		return nil, fmt.Errorf("failed to encode frame: %w", err)
 	}
 
-	// fmt.Printf(">> % X\n", encoded)
+	if p.debug {
+		pc, _, _, _ := runtime.Caller(2)
+		funcName := runtime.FuncForPC(pc).Name()
+		log.Printf("[\033[34m%s\033[0m] \033[31m>> % X\033[0m\n", funcName, encoded)
+	}
 
-	// Write to device
-	_, err = p.device.Write(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write to device: %w", err)
+	// Write to device with retry logic
+	maxRetries := 3
+	var writeErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 10ms, 20ms, 40ms
+			backoff := time.Duration(10<<uint(attempt-1)) * time.Millisecond
+			if p.debug {
+				log.Printf("Retrying write after %v (attempt %d/%d)", backoff, attempt+1, maxRetries)
+			}
+			time.Sleep(backoff)
+		}
+
+		_, writeErr = p.device.Write(encoded)
+		if writeErr == nil {
+			break
+		}
+	}
+
+	if writeErr != nil {
+		return nil, fmt.Errorf("failed to write to device after %d attempts: %w", maxRetries, writeErr)
 	}
 
 	p.lastCommand = time.Now()
@@ -116,7 +147,11 @@ func (p *PM5) sendCommand(contents []byte) (*csafe.Response, error) {
 		return nil, fmt.Errorf("failed to read from device: %w", err)
 	}
 
-	// fmt.Printf("<< % X\n", data)
+	if p.debug {
+		pc, _, _, _ := runtime.Caller(2)
+		funcName := runtime.FuncForPC(pc).Name()
+		log.Printf("[\033[34m%s\033[0m] \033[31m<< % X...\033[0m\n", funcName, data[0:50])
+	}
 
 	// Find frame boundaries in response
 	startIdx := -1

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/danhigham/pm5/csafe"
 )
 
 // ============================================================================
@@ -191,129 +193,159 @@ func BytesToUint32BE(b []byte) uint32 {
 // WorkoutSnapshot contains a complete snapshot of the current workout state
 type WorkoutSnapshot struct {
 	// Timing
-	ElapsedTime    time.Duration // Total elapsed time
-	WorkTime       time.Duration // Active work time
-	RestTime       time.Duration // Rest time (intervals)
-	ProjectedTime  time.Duration // Projected finish time
+	ElapsedTime   time.Duration // Total elapsed time
+	WorkTime      time.Duration // Active work time
+	RestTime      time.Duration // Rest time (intervals)
+	ProjectedTime time.Duration // Projected finish time
 
 	// Distance
 	Distance          float64 // Meters
 	ProjectedDistance float64 // Meters
 
 	// Performance
-	Pace           time.Duration // Per 500m
-	AvgPace        time.Duration // Per 500m
-	Power          uint16        // Watts
-	AvgPower       uint16        // Watts
-	StrokeRate     byte          // Strokes per minute
-	AvgStrokeRate  byte          // Strokes per minute
-	DragFactor     byte
+	Pace          time.Duration // Per 500m
+	AvgPace       time.Duration // Per 500m
+	Power         uint32        // Watts
+	AvgPower      uint32        // Watts
+	StrokeRate    byte          // Strokes per minute
+	AvgStrokeRate byte          // Strokes per minute
+	DragFactor    byte
 
 	// Calories
-	Calories       uint16
+	Calories        uint32
 	CaloricBurnRate uint16 // Cals/hr
 
 	// Heart Rate
-	HeartRate      byte // BPM (255 = invalid)
-	AvgHeartRate   byte
+	HeartRate    byte // BPM (255 = invalid)
+	AvgHeartRate byte
 
 	// State
-	WorkoutType    string
-	WorkoutState   string
-	IntervalType   string
-	RowingState    string
-	StrokeState    string
-	IntervalCount  byte
+	WorkoutType   string
+	WorkoutState  string
+	IntervalType  string
+	RowingState   string
+	StrokeState   string
+	IntervalCount byte
 }
 
 // GetWorkoutSnapshot returns a complete snapshot of the current workout
+// This uses a single batched CSAFE command for efficiency
 func (p *PM5) GetWorkoutSnapshot() (*WorkoutSnapshot, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	snapshot := &WorkoutSnapshot{}
 
-	// Get workout type
-	if wt, err := p.GetWorkoutType(); err == nil {
-		snapshot.WorkoutType = wt.String()
+	// Build all PM commands in a single batch
+	pmCmds := [][]byte{
+		csafe.BuildCommand(csafe.PMCmdGetWorkoutType),          // 0
+		csafe.BuildCommand(csafe.PMCmdGetWorkoutState),         // 1
+		csafe.BuildCommand(csafe.PMCmdGetIntervalType),         // 2
+		csafe.BuildCommand(csafe.PMCmdGetRowingState),          // 3
+		csafe.BuildCommand(csafe.PMCmdGetStrokeState),          // 4
+		csafe.BuildCommand(csafe.PMCmdGetWorkoutIntervalCount), // 5
+		csafe.BuildCommand(csafe.PMCmdGetWorkTime),             // 6
+		csafe.BuildCommand(csafe.PMCmdGetWorkDistance),         // 7
+		csafe.BuildCommand(csafe.PMCmdGetStroke500mPace),       // 8
+		csafe.BuildCommand(csafe.PMCmdGetTotalAvg500mPace),     // 9
+		csafe.BuildCommand(csafe.PMCmdGetStrokePower),          // 10
+		csafe.BuildCommand(csafe.PMCmdGetTotalAvgPower),        // 11
+		csafe.BuildCommand(csafe.PMCmdGetStrokeRate),           // 12
+		csafe.BuildCommand(csafe.PMCmdGetDragFactor),           // 13
+		csafe.BuildCommand(csafe.PMCmdGetTotalAvgCalories),     // 14
+		csafe.BuildCommand(csafe.PMCmdGetAvgHeartRate),         // 15
 	}
 
-	// Get workout state
-	if ws, err := p.GetWorkoutState(); err == nil {
-		snapshot.WorkoutState = ws.String()
+	// Add standard CSAFE heart rate command (not PM-specific)
+	contents := csafe.BuildPMCommand(csafe.CmdGetPMData, pmCmds...)
+	contents = append(contents, csafe.CmdGetHRCur)
+
+	resp, err := p.sendCommand(contents)
+	if err != nil {
+		return nil, err
 	}
 
-	// Get interval type
-	if it, err := p.GetIntervalType(); err == nil {
-		snapshot.IntervalType = it.String()
-	}
+	// Parse the batched response
+	for _, cmdResp := range resp.CommandData {
+		// Handle standard CSAFE commands
+		if cmdResp.Command == csafe.CmdGetHRCur && len(cmdResp.Data) >= 1 {
+			snapshot.HeartRate = cmdResp.Data[0]
+			continue
+		}
 
-	// Get rowing state
-	if rs, err := p.GetRowingState(); err == nil {
-		snapshot.RowingState = rs.String()
-	}
-
-	// Get stroke state
-	if ss, err := p.GetStrokeState(); err == nil {
-		snapshot.StrokeState = ss.String()
-	}
-
-	// Get interval count
-	if ic, err := p.GetWorkoutIntervalCount(); err == nil {
-		snapshot.IntervalCount = ic
-	}
-
-	// Get work time
-	if wt, err := p.GetPMWorkTime(); err == nil {
-		snapshot.WorkTime = HundredthsToTime(wt)
-		snapshot.ElapsedTime = snapshot.WorkTime
-	}
-
-	// Get work distance
-	if wd, err := p.GetPMWorkDistance(); err == nil {
-		snapshot.Distance = TenthsToMeters(wd)
-	}
-
-	// Get current pace
-	if pace, err := p.GetStroke500mPace(); err == nil {
-		snapshot.Pace = HundredthsToTime(pace)
-	}
-
-	// Get average pace
-	if avgPace, err := p.GetTotalAvg500mPace(); err == nil {
-		snapshot.AvgPace = HundredthsToTime(avgPace)
-	}
-
-	// Get power
-	if power, err := p.GetStrokePower(); err == nil {
-		snapshot.Power = uint16(power)
-	}
-
-	// Get average power
-	if avgPower, err := p.GetTotalAvgPower(); err == nil {
-		snapshot.AvgPower = uint16(avgPower)
-	}
-
-	// Get stroke rate
-	if sr, err := p.GetStrokeRate(); err == nil {
-		snapshot.StrokeRate = sr
-	}
-
-	// Get drag factor
-	if df, err := p.GetDragFactor(); err == nil {
-		snapshot.DragFactor = df
-	}
-
-	// Get calories
-	if cals, err := p.GetTotalAvgCalories(); err == nil {
-		snapshot.Calories = uint16(cals)
-	}
-
-	// Get heart rate
-	if hr, err := p.GetHeartRate(); err == nil {
-		snapshot.HeartRate = hr
-	}
-
-	// Get average heart rate
-	if avgHr, err := p.GetAvgHeartRate(); err == nil {
-		snapshot.AvgHeartRate = avgHr
+		// Handle PM proprietary responses
+		for _, pmResp := range cmdResp.PMResponses {
+			switch pmResp.Command {
+			case csafe.PMCmdGetWorkoutType:
+				if len(pmResp.Data) >= 1 {
+					snapshot.WorkoutType = csafe.WorkoutType(pmResp.Data[0]).String()
+				}
+			case csafe.PMCmdGetWorkoutState:
+				if len(pmResp.Data) >= 1 {
+					snapshot.WorkoutState = csafe.WorkoutState(pmResp.Data[0]).String()
+				}
+			case csafe.PMCmdGetIntervalType:
+				if len(pmResp.Data) >= 1 {
+					snapshot.IntervalType = csafe.IntervalType(pmResp.Data[0]).String()
+				}
+			case csafe.PMCmdGetRowingState:
+				if len(pmResp.Data) >= 1 {
+					snapshot.RowingState = csafe.RowingState(pmResp.Data[0]).String()
+				}
+			case csafe.PMCmdGetStrokeState:
+				if len(pmResp.Data) >= 1 {
+					snapshot.StrokeState = csafe.StrokeState(pmResp.Data[0]).String()
+				}
+			case csafe.PMCmdGetWorkoutIntervalCount:
+				if len(pmResp.Data) >= 1 {
+					snapshot.IntervalCount = pmResp.Data[0]
+				}
+			case csafe.PMCmdGetWorkTime:
+				if len(pmResp.Data) >= 4 {
+					wt := BytesToUint32BE(pmResp.Data[:4])
+					snapshot.WorkTime = HundredthsToTime(wt)
+					snapshot.ElapsedTime = snapshot.WorkTime
+				}
+			case csafe.PMCmdGetWorkDistance:
+				if len(pmResp.Data) >= 4 {
+					snapshot.Distance = float64(BytesToUint32BE(pmResp.Data[:4]))
+				}
+			case csafe.PMCmdGetStroke500mPace:
+				if len(pmResp.Data) >= 4 {
+					pace := BytesToUint32BE(pmResp.Data[:4])
+					snapshot.Pace = HundredthsToTime(pace)
+				}
+			case csafe.PMCmdGetTotalAvg500mPace:
+				if len(pmResp.Data) >= 4 {
+					avgPace := BytesToUint32BE(pmResp.Data[:4])
+					snapshot.AvgPace = HundredthsToTime(avgPace)
+				}
+			case csafe.PMCmdGetStrokePower:
+				if len(pmResp.Data) >= 4 {
+					snapshot.Power = BytesToUint32BE(pmResp.Data[:4])
+				}
+			case csafe.PMCmdGetTotalAvgPower:
+				if len(pmResp.Data) >= 4 {
+					snapshot.AvgPower = BytesToUint32BE(pmResp.Data[:4])
+				}
+			case csafe.PMCmdGetStrokeRate:
+				if len(pmResp.Data) >= 1 {
+					snapshot.StrokeRate = pmResp.Data[0]
+				}
+			case csafe.PMCmdGetDragFactor:
+				if len(pmResp.Data) >= 1 {
+					snapshot.DragFactor = pmResp.Data[0]
+				}
+			case csafe.PMCmdGetTotalAvgCalories:
+				if len(pmResp.Data) >= 4 {
+					snapshot.Calories = BytesToUint32BE(pmResp.Data[:4])
+				}
+			case csafe.PMCmdGetAvgHeartRate:
+				if len(pmResp.Data) >= 1 {
+					snapshot.AvgHeartRate = pmResp.Data[0]
+				}
+			}
+		}
 	}
 
 	return snapshot, nil
